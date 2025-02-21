@@ -1,0 +1,68 @@
+#!/bin/bash
+
+last-chat(){
+_chat="$(sqlite3 "$(llm logs path)" 'select id from conversations order by id desc limit 1')"
+  if [ -n "$_chat" ]; then
+    llm logs --cid ${_chat} | bat -p --color=always --wrap=auto -l markdown
+  fi
+}
+
+view-chat(){
+  _chat="$(sqlite3 "$(llm logs path)" 'select id from conversations order by id desc' | fzf --preview 'llm logs --cid {} | bat --color=always --style=numbers --wrap=auto -l markdown')"
+  if [ -n "$_chat" ]; then
+    llm logs --cid ${_chat} | bat -p --color=always --wrap=auto -l markdown
+  fi
+}
+
+
+continue-chat(){
+_chat="$(sqlite3 "$(llm logs path)" 'select id from conversations order by id desc' | fzf --preview 'llm logs --cid {} | bat --color=always --style=numbers --wrap=auto -l markdown')"
+  if [ -n "$_chat" ]; then
+    if [ "$_chat" == "Begin New Chat" ]; then
+      llm chat
+    else
+      llm chat --cid "${_chat}"
+    fi
+  fi
+}
+
+
+search-chats(){
+    INITIAL_QUERY="${*:-}"
+    IFS=: read -ra selected < <(
+    FZF_DEFAULT_COMMAND="/Users/joe/.local/bin/llms chat"
+      fzf --ansi --disabled \
+        --layout=reverse \
+        --height=75% \
+      --query "$INITIAL_QUERY" \
+      --bind 'start:reload:/Users/joe/.local/bin/llms {q}' \
+      --bind 'change:reload:sleep 0.1; /Users/joe/.local/bin/llms {q}' \
+      --preview 'llm logs --cid {} | bat --color=always --style=numbers --wrap=auto -l markdown' \
+    )
+    if [ -n "${selected[0]}" ]; then
+        llm logs --cid "${selected[0]}" | bat -p --color=always --wrap=auto -l markdown
+    fi
+}
+
+if ! command -v fzf &> /dev/null; then
+	echo "Required dependency fzf not installed.";
+elif ! command -v llm &> /dev/null; then
+	echo "Required dependency llm not installed.";
+elif [ -z "$1" ]; then
+	last-chat
+else
+	case "$1" in
+        last)
+            last-chat
+            ;;
+		view)
+		  view-chat
+		  ;;
+		 continue)
+		  continue-chat
+		  ;;
+         search)
+           search-chats
+             ;;
+	esac
+fi
