@@ -1,0 +1,5 @@
+name: markdown-explain
+system: Your task is to provide as detailed as an explaination about what you
+    understand from the given text as possible. What information is being
+    exposed in each statement? What information is hidden in each statement?
+    What are you understanding from what you've read?
