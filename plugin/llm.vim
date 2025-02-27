@@ -13,6 +13,7 @@ endif
 
 let g:template_prefix = "gen"
 
+
 function! OpenChatInBuffer(chat)
     execute "vsp Chat-" . a:chat
     if &modifiable
@@ -119,6 +120,17 @@ function! s:handleContinueExit(job, exitStatus)
 endfunction
 
 
+function! ContinueChat(chat)
+  call inputsave()
+  let l:prompt = input("What more would you like to discuss?: ")
+  call inputrestore()
+
+  let l:bufNr = term_start(['llm', 'prompt', "--cid", printf("%s", a:chat), printf("%s", l:prompt)], {
+			  \ 'exit_cb': function('s:handleContinueExit')
+			  \ })
+endfunction
+
+
 function! ContinueDiscuss()
 
   call inputsave()
@@ -157,7 +169,7 @@ function! RunQuestionAndDiscuss(template, text)
   let l:prompt = input("What more would you like to discuss?: ")
   call inputrestore()
 
-  let l:content = printf("<context>%s</context> <prompt>%s</prompt>", a:text, l:prompt)
+  let l:content = printf("<context>\n%s\n</context>\n\n<prompt>\n%s\n</prompt>", a:text, l:prompt)
 
   let l:bufNr = term_start(['llm', '--template', printf("%s", a:template), printf("%s", l:content)], {
 			  \ 'exit_cb': function('s:exitCb')
@@ -373,6 +385,48 @@ function! s:LLMQuestionOperatorFunction(type)
 endfunction
 
 
+function! SelectFilesAndDiscuss()
+  function! s:sink(files)
+    " Generate the tree structure
+    let tree_structure = system('lsd --tree --depth 4 --group-dirs first -I venv/*')
+
+    " Start building the context
+    let context = "<context>\n<structure>\n" . tree_structure . "\n</structure>\n"
+
+    " Add each selected file's content
+    for file in a:files
+      let file_content = system('cat "' . file . '"')
+      let context .= '\n<file name="' . file . '">\n' . file_content . '\n</file>\n'
+    endfor
+
+    " Close the context tag
+    let context .= "\n</context>\n"
+
+    " Get the user's prompt
+    call inputsave()
+    let prompt = input("Enter your prompt about these files: ")
+    call inputrestore()
+
+    " Format the complete input for llm CLI
+    let content = printf("%s\n\n<prompt>\n%s\n</prompt>", context, prompt)
+
+    " Start the terminal with the llm command
+    let l:bufNr = term_start(['llm', '--template', g:template_prefix . "-question", printf("%s", content)], {
+          \ 'exit_cb': function('s:handleContinueExit')
+          \ })
+  endfunction
+
+  " Call fzf with multi-select enabled and our sink function
+  call fzf#run({
+        \ 'source': "fd --follow --color=always --exclude '.git' --exclude 'node_modules' --exclude 'venv' --exclude '.cache'",
+        \ 'sink*': function('s:sink'),
+        \ 'options': '--multi --preview "bat --style=numbers --color=always {}"'
+        \ })
+endfunction
+
+
+" Add the keybinding
+nmap <leader>lb :call SelectFilesAndDiscuss()<CR>
 nnoremap <Plug>LLMReplacementOperator :set opfunc=<SID>LLMReplacementOperatorFunction<CR>g@
 nnoremap <Plug>LLMRefactorOperator :set opfunc=<SID>LLMRefactorOperatorFunction<CR>g@
 nnoremap <Plug>LLMDiscussionOperator :set opfunc=<SID>LLMDiscussionOperatorFunction<CR>g@
@@ -408,5 +462,7 @@ nmap <leader>lw :call RunCommandAndPaste(g:template_prefix . "-code-gen")<CR>
 
 " Leader llm view
 nmap <leader>lv :call OpenLastChatInBuffer()<CR>
+nmap <leader>lm :call ContinueDiscuss()<CR>
+
 
 let g:loaded_llm = 1
